@@ -1,5 +1,7 @@
 import argparse
 from pathlib import Path
+from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
 
 import pandas as pd
 
@@ -36,8 +38,41 @@ def preprocess_data(data_file: str, output_dir: str) -> None:
     data_path = Path(data_file)
     output_path = Path(output_dir)
 
-    # TODO: implement preprocessing logic
-    pass
+
+    data = pd.read_csv(data_path)
+    data = data.dropna()
+
+    # Label Encoding
+    le = LabelEncoder()
+    data["family_accession"] = le.fit_transform(data["family_accession"])
+
+    # Séparer normal / rare
+    counts = data["family_accession"].value_counts()
+    normal = data[data["family_accession"].isin(counts[counts > 5].index)]
+    rare = data[data["family_accession"].isin(counts[counts <= 5].index)]
+
+    # Split normal
+    train, temp = train_test_split(
+        normal, test_size=0.4, random_state=42,
+        stratify=normal["family_accession"]
+    )
+
+    test, val = train_test_split(
+        temp, test_size=0.5, random_state=42,
+        stratify=temp["family_accession"]
+    )
+
+    # Ajouter les "rare" au train
+    train = pd.concat([train, rare], ignore_index=True)
+
+    train.to_csv(output_path / "train.csv", index=False)
+    test.to_csv(output_path / "test.csv", index=False)
+    val.to_csv(output_path / "validation.csv", index=False)
+    
+
+
+
+
 
 
 if __name__ == "__main__":

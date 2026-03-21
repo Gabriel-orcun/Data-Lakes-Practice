@@ -1,5 +1,6 @@
 import argparse
 from pathlib import Path
+import glob
 
 import pandas as pd
 
@@ -29,8 +30,17 @@ def unpack_data(input_dir: str, output_file: str) -> None:
     input_path = Path(input_dir)
     output_path = Path(output_file)
 
-    # TODO: implement the unpacking logic
-    pass
+    concat = pd.DataFrame()
+    files = ['dev', 'train' , 'test']
+
+    dfs = []
+    for file in files:
+        for p in glob.glob(f"{input_path}/{file}/*"):
+            dfs.append(pd.read_csv(p))
+
+    concat = pd.concat(dfs, ignore_index=True)
+    concat.to_csv(output_path / "data.csv", index=False)
+
 
 
 if __name__ == "__main__":
