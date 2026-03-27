@@ -1,53 +1,59 @@
 import argparse
 from pathlib import Path
 import glob
+import os
+import time
+import boto3
+import io
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 
+MAX_WORKER = 4
 
-def unpack_data(input_dir: str, output_file: str) -> None:
+def read_single_csv(filepath: str):
+    data = pd.read_csv(filepath)
+    return data
+
+def unpack_data(input_dir: str,bucket_name:str, output_file_name: str) -> None:
     """
-    Combine multiple CSV files from a directory into a single CSV file.
-
-    This function reads all CSV files in the input directory, concatenates
-    them into a single DataFrame, and saves the result to the output path.
-
-    Parameters
-    ----------
-    input_dir : str
-        Path to the directory containing the CSV files to combine.
-    output_file : str
-        Path where the combined CSV file will be saved.
-
-    Steps
-    -----
-    1. List all files in the input directory
-    2. Filter to keep only .csv files
-    3. Read each CSV file into a pandas DataFrame
-    4. Concatenate all DataFrames
-    5. Save the combined DataFrame to output_file
     """
     input_path = Path(input_dir)
-    output_path = Path(output_file)
+    s3 = boto3.client('s3' , endpoint_url='http://localhost:4566')
 
-    concat = pd.DataFrame()
-    files = ['dev', 'train' , 'test']
+    csv_files = []
 
-    dfs = []
-    for file in files:
-        for p in glob.glob(f"{input_path}/{file}/*"):
-            dfs.append(pd.read_csv(p))
+    path_files = [f'{input_path}/dev' , f'{input_path}/test' , f'{input_path}/train']
+    for path in path_files:
+        for file in glob.glob(f'{path}/*'):
+            csv_files.append(file)
+    start = time.perf_counter()
+    with ThreadPoolExecutor() as executor:
+        dataframes = executor.map(read_single_csv , csv_files)
 
-    concat = pd.concat(dfs, ignore_index=True)
-    concat.to_csv(output_path / "data.csv", index=False)
+    data = pd.concat(dataframes, ignore_index=True)
+
+    end = time.perf_counter()
+
+    csv_buffer = io.StringIO()
+
+    data.to_csv(csv_buffer, index=False)
+
+    s3.put_object(
+        Bucket=bucket_name,
+        Key=output_file_name,
+        Body=csv_buffer.getvalue()
+    )
+
+    print(f"Parallele : {end - start}")
 
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Unpack and combine CSV files.")
     parser.add_argument("--input_dir", type=str, required=True)
-    parser.add_argument("--output_file", type=str, required=True)
-
+    parser.add_argument("--bucket_name", type=str, required=True)
+    parser.add_argument("--output_file_name", type=str, required=True)
     args = parser.parse_args()
 
-    unpack_data(args.input_dir, args.output_file)
+    unpack_data(args.input_dir, args.bucket_name ,  args.output_file_name)
